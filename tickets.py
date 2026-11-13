@@ -1,4 +1,4 @@
-"""Construye tickets sin depender de la interfaz de consola."""
+"""Crea y busca tickets sin depender de la interfaz de consola."""
 
 from datetime import datetime
 
@@ -22,3 +22,11 @@ def crear_ticket(identificador: int, titulo: str, descripcion: str,
         "estado": "abierto",
         "fecha_creacion": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
+
+
+def buscar_ticket(tickets: list[dict], identificador: int) -> dict | None:
+    """Devuelve el ticket con el ID indicado o None si no existe."""
+    for ticket in tickets:
+        if ticket["id"] == identificador:
+            return ticket
+    return None
