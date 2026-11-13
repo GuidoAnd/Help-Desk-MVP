@@ -1,70 +1,152 @@
-"""Punto de entrada del menú de la mesa de ayuda."""
+"""Interfaz interactiva y coordinación de la mesa de ayuda."""
 
 import logging
+import sys
 
+import questionary
+from colorama import Fore, Style, just_fix_windows_console
 from tabulate import tabulate
 
 from archivo import BASE, cargar_datos, guardar_tickets
-from tickets import PRIORIDADES, buscar_ticket, crear_ticket
+from tickets import (
+    PRIORIDADES, TRANSICIONES, buscar_ticket, cambiar_estado, crear_ticket,
+    eliminar_ticket,
+)
+
+COLORES_ESTADO = {
+    "abierto": Fore.YELLOW,
+    "en_curso": Fore.CYAN,
+    "resuelto": Fore.GREEN,
+}
 
 
-def pedir_titulo() -> str:
-    """Solicita un título hasta recibir texto no vacío."""
-    while True:
-        titulo = input("Título: ").strip()
-        if titulo:
-            return titulo
-        print("El título no puede estar vacío.")
+def colorear(texto: str, color: str) -> str:
+    """Añade color solo cuando la salida es una terminal."""
+    if not sys.stdout.isatty():
+        return texto
+    return f"{color}{texto}{Style.RESET_ALL}"
 
 
-def pedir_prioridad() -> str:
-    """Limita la entrada a las prioridades admitidas."""
-    while True:
-        prioridad = input("Prioridad (alta/media/baja): ").strip().lower()
-        if prioridad in PRIORIDADES:
-            return prioridad
-        print("Elegí alta, media o baja.")
+def informar(texto: str, color: str = Fore.CYAN) -> None:
+    """Muestra un mensaje cuyo significado también queda expresado en texto."""
+    print(colorear(texto, color))
 
 
 def mostrar_tickets(tickets: list[dict]) -> None:
-    """Presenta todos los tickets en una tabla sin alterar sus datos."""
+    """Presenta los seis campos sin modificar los tickets originales."""
     if not tickets:
-        print("No hay tickets registrados.")
+        informar("No hay tickets registrados.")
         return
     encabezados = {
         "id": "ID", "titulo": "Título", "descripcion": "Descripción",
         "prioridad": "Prioridad", "estado": "Estado",
         "fecha_creacion": "Fecha de creación",
     }
-    filas = [[ticket[campo] for campo in encabezados] for ticket in tickets]
+    filas = []
+    for ticket in tickets:
+        fila = dict(ticket)
+        fila["estado"] = colorear(ticket["estado"],
+                                  COLORES_ESTADO[ticket["estado"]])
+        filas.append([fila[campo] for campo in encabezados])
     print(tabulate(
         filas, headers=list(encabezados.values()), tablefmt="grid",
         disable_numparse=True, maxcolwidths=[None, 30, 40, None, None, None],
     ))
 
 
-def consultar_ticket(tickets: list[dict]) -> None:
-    """Valida el ID ingresado y muestra todos los datos del ticket encontrado."""
+def seleccionar_ticket(tickets: list[dict]) -> dict | None:
+    """Solicita un ID y resuelve la búsqueda sin cambiar los datos."""
     if not tickets:
-        print("No hay tickets registrados.")
-        return
+        informar("No hay tickets registrados.")
+        return None
+    entrada = questionary.text("ID del ticket:").ask()
+    if entrada is None:
+        informar("Operación cancelada.")
+        return None
     try:
-        identificador = int(input("ID del ticket: ").strip())
+        identificador = int(entrada.strip())
+        if identificador < 1:
+            raise ValueError
     except ValueError:
-        print("El ID debe ser un número entero positivo.")
-        return
-    if identificador < 1:
-        print("El ID debe ser un número entero positivo.")
-        return
+        informar("El ID debe ser un número entero positivo.", Fore.YELLOW)
+        return None
     ticket = buscar_ticket(tickets, identificador)
     if ticket is None:
-        print(f"No existe un ticket con ID {identificador}.")
-        return
+        informar(f"No existe un ticket con ID {identificador}.", Fore.YELLOW)
+    return ticket
+
+
+def registrar_ticket(tickets: list[dict], ultimo_id: int) -> tuple[list[dict], int]:
+    """Solicita los datos y persiste la creación solo al completar las preguntas."""
+    titulo = questionary.text(
+        "Título:", validate=lambda texto: bool(texto.strip())
+        or "El título no puede estar vacío.",
+    ).ask()
+    if titulo is None:
+        informar("Creación cancelada.")
+        return tickets, ultimo_id
+    descripcion = questionary.text("Descripción:").ask()
+    if descripcion is None:
+        informar("Creación cancelada.")
+        return tickets, ultimo_id
+    prioridad = questionary.select("Prioridad:", choices=list(PRIORIDADES)).ask()
+    if prioridad is None:
+        informar("Creación cancelada.")
+        return tickets, ultimo_id
+    siguiente_id = ultimo_id + 1
+    ticket = crear_ticket(siguiente_id, titulo, descripcion, prioridad)
+    nuevos = tickets + [ticket]
+    guardar_tickets(nuevos, siguiente_id)
+    logging.info("Ticket #%s creado (prioridad %s)", siguiente_id, prioridad)
+    informar(f"Ticket #{siguiente_id} creado y guardado.", Fore.GREEN)
+    return nuevos, siguiente_id
+
+
+def actualizar_estado(tickets: list[dict], ultimo_id: int) -> list[dict]:
+    """Ofrece el siguiente estado permitido y guarda antes de registrar el cambio."""
+    ticket = seleccionar_ticket(tickets)
+    if ticket is None:
+        return tickets
+    siguiente = TRANSICIONES.get(ticket["estado"])
+    if siguiente is None:
+        informar("El ticket ya está resuelto; no hay otro estado permitido.")
+        return tickets
     mostrar_tickets([ticket])
+    estado = questionary.select(
+        "Nuevo estado:", choices=[siguiente, "Cancelar"],
+    ).ask()
+    if estado is None or estado == "Cancelar":
+        informar("Cambio de estado cancelado.")
+        return tickets
+    nuevos = cambiar_estado(tickets, ticket["id"], estado)
+    guardar_tickets(nuevos, ultimo_id)
+    logging.info("Ticket #%s cambió a %s", ticket["id"], estado)
+    informar(f"Ticket #{ticket['id']} cambió a {estado}.", Fore.GREEN)
+    return nuevos
+
+
+def confirmar_eliminacion(tickets: list[dict], ultimo_id: int) -> list[dict]:
+    """Exige confirmación explícita y elimina sin reducir el contador histórico."""
+    ticket = seleccionar_ticket(tickets)
+    if ticket is None:
+        return tickets
+    mostrar_tickets([ticket])
+    confirmado = questionary.confirm(
+        f"¿Eliminar el ticket #{ticket['id']}?", default=False,
+    ).ask()
+    if confirmado is not True:
+        informar("Eliminación cancelada.")
+        return tickets
+    nuevos = eliminar_ticket(tickets, ticket["id"])
+    guardar_tickets(nuevos, ultimo_id)
+    logging.info("Ticket #%s eliminado", ticket["id"])
+    informar(f"Ticket #{ticket['id']} eliminado.", Fore.GREEN)
+    return nuevos
 
 
 def main() -> int:
-    """Carga los datos y repite el menú hasta salir o encontrar un error."""
+    """Carga los datos y coordina las operaciones elegidas en el menú."""
+    just_fix_windows_console()
     try:
         logging.basicConfig(
             filename=BASE / "helpdesk.log", encoding="utf-8",
@@ -74,36 +156,34 @@ def main() -> int:
         )
         tickets, ultimo_id = cargar_datos()
         while True:
-            print("\nMesa de ayuda\n1. Crear ticket\n2. Listar tickets"
-                  "\n3. Buscar ticket por ID\n4. Salir")
-            opcion = input("Opción: ").strip()
-            if opcion == "1":
-                titulo = pedir_titulo()
-                descripcion = input("Descripción: ")
-                prioridad = pedir_prioridad()
-                siguiente_id = ultimo_id + 1
-                ticket = crear_ticket(siguiente_id, titulo, descripcion, prioridad)
-                guardar_tickets(tickets + [ticket], siguiente_id)
-                ultimo_id = siguiente_id
-                tickets.append(ticket)
-                logging.info("Ticket #%s creado (prioridad %s)",
-                             ticket["id"], ticket["prioridad"])
-                print(f"Ticket #{ticket['id']} creado y guardado.")
-            elif opcion == "2":
-                mostrar_tickets(tickets)
-            elif opcion == "3":
-                consultar_ticket(tickets)
-            elif opcion == "4":
-                guardar_tickets(tickets, ultimo_id)
-                print("Datos guardados. Hasta luego.")
+            opcion = questionary.select("Mesa de ayuda", choices=[
+                "Crear ticket", "Listar tickets", "Buscar ticket por ID",
+                "Cambiar estado", "Eliminar ticket", "Salir",
+            ]).ask()
+            if opcion is None:
+                informar("Sesión cancelada. Las operaciones confirmadas están guardadas.")
                 return 0
-            else:
-                print("Opción inválida. Elegí 1, 2, 3 o 4.")
+            if opcion == "Salir":
+                guardar_tickets(tickets, ultimo_id)
+                informar("Datos guardados. Hasta luego.", Fore.GREEN)
+                return 0
+            if opcion == "Crear ticket":
+                tickets, ultimo_id = registrar_ticket(tickets, ultimo_id)
+            elif opcion == "Listar tickets":
+                mostrar_tickets(tickets)
+            elif opcion == "Buscar ticket por ID":
+                ticket = seleccionar_ticket(tickets)
+                if ticket is not None:
+                    mostrar_tickets([ticket])
+            elif opcion == "Cambiar estado":
+                tickets = actualizar_estado(tickets, ultimo_id)
+            elif opcion == "Eliminar ticket":
+                tickets = confirmar_eliminacion(tickets, ultimo_id)
     except (EOFError, KeyboardInterrupt):
-        print("\nSesión interrumpida. Las creaciones confirmadas están guardadas.")
+        informar("Sesión interrumpida. Las operaciones confirmadas están guardadas.")
         return 0
     except (OSError, ValueError) as error:
-        print(f"No se puede continuar: {error}")
+        informar(f"No se puede continuar: {error}", Fore.RED)
         return 1
 
 
