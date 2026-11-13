@@ -15,16 +15,14 @@ python3 -m pip install -r requirements.txt
 python3 main.py
 ```
 
-En PowerShell:
-
-```powershell
+```Powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python main.py
 ```
 
-## Uso y datos
+## Uso, datos y manejo de errores
 
 - Opción 1: ingresar título, descripción y prioridad (`alta`, `media` o `baja`).
 - Opción 2: listar todos los tickets en una tabla con sus seis campos.
@@ -42,14 +40,6 @@ contador juntos mediante un archivo temporal y reemplazo del destino.
 Los IDs guardados no se reutilizan aunque se eliminen tickets. Conservar y
 respaldar `tickets.json`; no reducir ni borrar su campo `ultimo_id`.
 Si los datos están dañados, el programa informa el error y se detiene.
-
-### Datos del formato anterior
-
-Al iniciar, si `tickets.json` contiene una lista, el programa carga su contador
-desde `ultimo_id.json`, valida ambos y guarda el formato nuevo automáticamente.
-Si falta el contador, se detiene sin modificar la lista para no perder el historial.
-El archivo anterior `ultimo_id.json` se conserva sin modificar; después de migrar,
-la aplicación solo utiliza el contador de `tickets.json`.
 
 ## Limitaciones y mejoras
 
