@@ -4,9 +4,7 @@ import logging
 
 from tabulate import tabulate
 
-from archivo import (
-    BASE, cargar_tickets, cargar_ultimo_id, guardar_tickets, reservar_id,
-)
+from archivo import BASE, cargar_datos, guardar_tickets
 from tickets import PRIORIDADES, buscar_ticket, crear_ticket
 
 
@@ -74,8 +72,7 @@ def main() -> int:
             format="%(asctime)s | %(levelname)s | %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
-        tickets = cargar_tickets()
-        ultimo_id = cargar_ultimo_id(tickets)
+        tickets, ultimo_id = cargar_datos()
         while True:
             print("\nMesa de ayuda\n1. Crear ticket\n2. Listar tickets"
                   "\n3. Buscar ticket por ID\n4. Salir")
@@ -84,9 +81,10 @@ def main() -> int:
                 titulo = pedir_titulo()
                 descripcion = input("Descripción: ")
                 prioridad = pedir_prioridad()
-                ultimo_id = reservar_id(ultimo_id)
-                ticket = crear_ticket(ultimo_id, titulo, descripcion, prioridad)
-                guardar_tickets(tickets + [ticket])
+                siguiente_id = ultimo_id + 1
+                ticket = crear_ticket(siguiente_id, titulo, descripcion, prioridad)
+                guardar_tickets(tickets + [ticket], siguiente_id)
+                ultimo_id = siguiente_id
                 tickets.append(ticket)
                 logging.info("Ticket #%s creado (prioridad %s)",
                              ticket["id"], ticket["prioridad"])
@@ -96,7 +94,7 @@ def main() -> int:
             elif opcion == "3":
                 consultar_ticket(tickets)
             elif opcion == "4":
-                guardar_tickets(tickets)
+                guardar_tickets(tickets, ultimo_id)
                 print("Datos guardados. Hasta luego.")
                 return 0
             else:

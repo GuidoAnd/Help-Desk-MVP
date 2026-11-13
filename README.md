@@ -34,14 +34,22 @@ python main.py
 Si no hay tickets se informa en pantalla. La búsqueda requiere un ID entero
 positivo; si el ID no existe, se informa y se vuelve al menú.
 
-Los archivos se crean junto a `main.py`: `tickets.json` contiene la lista de
-tickets, `ultimo_id.json` conserva el último ID reservado y `helpdesk.log`
-registra las creaciones. Cada creación se guarda inmediatamente.
+Los archivos se crean junto a `main.py`. `tickets.json` contiene el contador
+histórico `ultimo_id` y la lista `tickets` en un mismo objeto JSON.
+`helpdesk.log` registra las creaciones. Cada creación guarda la colección y su
+contador juntos mediante un archivo temporal y reemplazo del destino.
 
-Los IDs no se reutilizan: una reserva interrumpida puede dejar un salto.
-Conservar y respaldar juntos los dos archivos JSON, incluso después de eliminar
-tickets. No editar ni borrar el contador: conserva el historial de IDs.
-Si los archivos están dañados, el programa informa el error y se detiene.
+Los IDs guardados no se reutilizan aunque se eliminen tickets. Conservar y
+respaldar `tickets.json`; no reducir ni borrar su campo `ultimo_id`.
+Si los datos están dañados, el programa informa el error y se detiene.
+
+### Datos del formato anterior
+
+Al iniciar, si `tickets.json` contiene una lista, el programa carga su contador
+desde `ultimo_id.json`, valida ambos y guarda el formato nuevo automáticamente.
+Si falta el contador, se detiene sin modificar la lista para no perder el historial.
+El archivo anterior `ultimo_id.json` se conserva sin modificar; después de migrar,
+la aplicación solo utiliza el contador de `tickets.json`.
 
 ## Limitaciones y mejoras
 
@@ -53,4 +61,4 @@ Todavía no incluye cambio de estado ni eliminación.
 
 - `main.py`: interacción y coordinación del menú.
 - `tickets.py`: creación y búsqueda de tickets separadas de la consola.
-- `archivo.py`: lectura, escritura y reserva persistente de IDs.
+- `archivo.py`: lectura, validación, migración y guardado conjunto de tickets e IDs.

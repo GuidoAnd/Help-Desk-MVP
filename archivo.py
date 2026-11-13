@@ -17,14 +17,10 @@ def guardar_json(ruta: Path, datos: object) -> None:
     temporal.replace(ruta)
 
 
-def cargar_tickets() -> list[dict]:
-    """Carga y valida la lista sin sobrescribir datos inválidos."""
-    if not DATOS.exists():
-        guardar_json(DATOS, [])
-    with DATOS.open(encoding="utf-8") as archivo:
-        tickets = json.load(archivo)
+def validar_tickets(tickets: list[dict]) -> None:
+    """Rechaza tickets inválidos antes de utilizar o guardar sus datos."""
     if not isinstance(tickets, list):
-        raise ValueError("tickets.json debe contener una lista.")
+        raise ValueError("El campo tickets debe contener una lista.")
     campos = {"id", "titulo", "descripcion", "prioridad", "estado",
               "fecha_creacion"}
     ids = set()
@@ -45,31 +41,39 @@ def cargar_tickets() -> list[dict]:
             raise ValueError("Prioridad inválida en tickets.json.")
         if ticket["estado"] not in ("abierto", "en_curso", "resuelto"):
             raise ValueError("Estado inválido en tickets.json.")
-    return tickets
 
 
-def cargar_ultimo_id(tickets: list[dict]) -> int:
-    """Carga el contador que debe conservarse incluso al eliminar tickets."""
-    if not CONTADOR.exists():
-        if tickets:
-            raise ValueError("Falta ultimo_id.json; restaurá el contador histórico.")
-        guardar_json(CONTADOR, 0)
-    with CONTADOR.open(encoding="utf-8") as archivo:
-        ultimo_id = json.load(archivo)
+def validar_datos(tickets: list[dict], ultimo_id: int) -> None:
+    """Comprueba la colección y la continuidad del contador histórico."""
+    validar_tickets(tickets)
     if type(ultimo_id) is not int or ultimo_id < 0:
         raise ValueError("El contador de IDs es inválido.")
     if ultimo_id < max((ticket["id"] for ticket in tickets), default=0):
         raise ValueError("El contador es menor que un ID existente.")
-    return ultimo_id
 
 
-def reservar_id(ultimo_id: int) -> int:
-    """Persiste el siguiente ID antes de usarlo para no reutilizarlo."""
-    siguiente = ultimo_id + 1
-    guardar_json(CONTADOR, siguiente)
-    return siguiente
+def cargar_datos() -> tuple[list[dict], int]:
+    """Carga el documento y migra el formato anterior sin borrar el contador."""
+    if not DATOS.exists():
+        if CONTADOR.exists():
+            raise ValueError("Falta tickets.json; restaurá los datos existentes.")
+        guardar_tickets([], 0)
+    with DATOS.open(encoding="utf-8") as archivo:
+        datos = json.load(archivo)
+    if isinstance(datos, list):
+        if not CONTADOR.exists():
+            raise ValueError("Falta el contador histórico para migrar los datos.")
+        with CONTADOR.open(encoding="utf-8") as archivo:
+            ultimo_id = json.load(archivo)
+        guardar_tickets(datos, ultimo_id)
+        return datos, ultimo_id
+    if not isinstance(datos, dict) or set(datos) != {"ultimo_id", "tickets"}:
+        raise ValueError("tickets.json debe contener ultimo_id y tickets.")
+    validar_datos(datos["tickets"], datos["ultimo_id"])
+    return datos["tickets"], datos["ultimo_id"]
 
 
-def guardar_tickets(tickets: list[dict]) -> None:
-    """Guarda los tickets conservando su estructura de lista."""
-    guardar_json(DATOS, tickets)
+def guardar_tickets(tickets: list[dict], ultimo_id: int) -> None:
+    """Guarda tickets y contador juntos mediante un único reemplazo."""
+    validar_datos(tickets, ultimo_id)
+    guardar_json(DATOS, {"ultimo_id": ultimo_id, "tickets": tickets})
