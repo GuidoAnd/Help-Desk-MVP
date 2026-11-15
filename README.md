@@ -5,7 +5,7 @@ Aplicación de consola para crear, listar, buscar, cambiar de estado y eliminar 
 
 ## Instalación y ejecución
 
-La aplicación utiliza Python 3.13.5 y las siguentes librerias externas:
+La aplicación utiliza Python 3.13.5 y las siguientes bibliotecas externas:
 
 - `tabulate`: presenta los tickets en tablas.
 - `questionary`: menú, selección de prioridades y estados, entrada de datos y confirmaciones.
@@ -22,7 +22,7 @@ python3 main.py
 
 ### Windows
 
-```Powershell
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -73,4 +73,4 @@ El menú requiere una terminal interactiva; no ofrece una interfaz para scripts.
 - `main.py`: interacción y coordinación del menú.
 - `tickets.py`: creación, búsqueda, transiciones y eliminación separadas de la consola.
 - `archivo.py`: lectura, validación, migración y guardado conjunto de tickets e IDs.
-- `requirements.txt`: librerias externas y sus versiones.
+- `requirements.txt`: bibliotecas externas y sus versiones.

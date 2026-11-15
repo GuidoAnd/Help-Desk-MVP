@@ -20,6 +20,48 @@ COLORES_ESTADO = {
 }
 
 
+class RegistroArchivo(logging.FileHandler):
+    """Propaga fallos de escritura para avisar sin revertir datos guardados."""
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        """Propaga el fallo de emisión para que la interfaz lo informe."""
+        causa = sys.exc_info()[1]
+        raise OSError("No se pudo escribir helpdesk.log.") from causa
+
+
+def configurar_logs() -> None:
+    """Abre el registro antes de cargar o modificar los datos de la sesión."""
+    try:
+        manejador = RegistroArchivo(BASE / "helpdesk.log", encoding="utf-8")
+    except OSError as error:
+        raise OSError(
+            "No se pudo abrir helpdesk.log. Revisá los permisos; "
+            "la sesión no se inició."
+        ) from error
+    registro = logging.getLogger("helpdesk")
+    for anterior in registro.handlers[:]:
+        registro.removeHandler(anterior)
+        anterior.close()
+    manejador.setFormatter(logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S",
+    ))
+    registro.addHandler(manejador)
+    registro.setLevel(logging.INFO)
+    registro.propagate = False
+
+
+def registrar_accion(mensaje: str, *argumentos: object) -> None:
+    """Advierte si falla el log tras guardar, sin repetir la operación."""
+    try:
+        logging.getLogger("helpdesk").info(mensaje, *argumentos)
+    except (OSError, UnicodeError):
+        informar(
+            "Los datos están guardados, pero la acción no pudo registrarse "
+            "en helpdesk.log. No repitas la operación; revisá el archivo "
+            "y los permisos del registro.", Fore.YELLOW,
+        )
+
+
 def colorear(texto: str, color: str) -> str:
     """Añade color solo cuando la salida es una terminal."""
     if not sys.stdout.isatty():
@@ -76,8 +118,10 @@ def seleccionar_ticket(tickets: list[dict]) -> dict | None:
     return ticket
 
 
-def registrar_ticket(tickets: list[dict], ultimo_id: int) -> tuple[list[dict], int]:
-    """Solicita los datos y persiste la creación solo al completar las preguntas."""
+def registrar_ticket(
+    tickets: list[dict], ultimo_id: int,
+) -> tuple[list[dict], int]:
+    """Guarda la creación únicamente tras completar todas las preguntas."""
     titulo = questionary.text(
         "Título:", validate=lambda texto: bool(texto.strip())
         or "El título no puede estar vacío.",
@@ -89,7 +133,9 @@ def registrar_ticket(tickets: list[dict], ultimo_id: int) -> tuple[list[dict], i
     if descripcion is None:
         informar("Creación cancelada.")
         return tickets, ultimo_id
-    prioridad = questionary.select("Prioridad:", choices=list(PRIORIDADES)).ask()
+    prioridad = questionary.select(
+        "Prioridad:", choices=list(PRIORIDADES),
+    ).ask()
     if prioridad is None:
         informar("Creación cancelada.")
         return tickets, ultimo_id
@@ -97,13 +143,15 @@ def registrar_ticket(tickets: list[dict], ultimo_id: int) -> tuple[list[dict], i
     ticket = crear_ticket(siguiente_id, titulo, descripcion, prioridad)
     nuevos = tickets + [ticket]
     guardar_tickets(nuevos, siguiente_id)
-    logging.info("Ticket #%s creado (prioridad %s)", siguiente_id, prioridad)
+    registrar_accion(
+        "Ticket #%s creado (prioridad %s)", siguiente_id, prioridad,
+    )
     informar(f"Ticket #{siguiente_id} creado y guardado.", Fore.GREEN)
     return nuevos, siguiente_id
 
 
 def actualizar_estado(tickets: list[dict], ultimo_id: int) -> list[dict]:
-    """Ofrece el siguiente estado permitido y guarda antes de registrar el cambio."""
+    """Ofrece el avance permitido y lo guarda antes de registrar la acción."""
     ticket = seleccionar_ticket(tickets)
     if ticket is None:
         return tickets
@@ -120,13 +168,13 @@ def actualizar_estado(tickets: list[dict], ultimo_id: int) -> list[dict]:
         return tickets
     nuevos = cambiar_estado(tickets, ticket["id"], estado)
     guardar_tickets(nuevos, ultimo_id)
-    logging.info("Ticket #%s cambió a %s", ticket["id"], estado)
+    registrar_accion("Ticket #%s cambió a %s", ticket["id"], estado)
     informar(f"Ticket #{ticket['id']} cambió a {estado}.", Fore.GREEN)
     return nuevos
 
 
 def confirmar_eliminacion(tickets: list[dict], ultimo_id: int) -> list[dict]:
-    """Exige confirmación explícita y elimina sin reducir el contador histórico."""
+    """Confirma la eliminación y conserva el contador histórico."""
     ticket = seleccionar_ticket(tickets)
     if ticket is None:
         return tickets
@@ -139,7 +187,7 @@ def confirmar_eliminacion(tickets: list[dict], ultimo_id: int) -> list[dict]:
         return tickets
     nuevos = eliminar_ticket(tickets, ticket["id"])
     guardar_tickets(nuevos, ultimo_id)
-    logging.info("Ticket #%s eliminado", ticket["id"])
+    registrar_accion("Ticket #%s eliminado", ticket["id"])
     informar(f"Ticket #{ticket['id']} eliminado.", Fore.GREEN)
     return nuevos
 
@@ -148,12 +196,7 @@ def main() -> int:
     """Carga los datos y coordina las operaciones elegidas en el menú."""
     just_fix_windows_console()
     try:
-        logging.basicConfig(
-            filename=BASE / "helpdesk.log", encoding="utf-8",
-            level=logging.INFO,
-            format="%(asctime)s | %(levelname)s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+        configurar_logs()
         tickets, ultimo_id = cargar_datos()
         while True:
             opcion = questionary.select("Mesa de ayuda", choices=[
@@ -161,7 +204,10 @@ def main() -> int:
                 "Cambiar estado", "Eliminar ticket", "Salir",
             ]).ask()
             if opcion is None:
-                informar("Sesión cancelada. Las operaciones confirmadas están guardadas.")
+                informar(
+                    "Sesión cancelada. Las operaciones confirmadas "
+                    "están guardadas."
+                )
                 return 0
             if opcion == "Salir":
                 guardar_tickets(tickets, ultimo_id)
@@ -180,7 +226,9 @@ def main() -> int:
             elif opcion == "Eliminar ticket":
                 tickets = confirmar_eliminacion(tickets, ultimo_id)
     except (EOFError, KeyboardInterrupt):
-        informar("Sesión interrumpida. Las operaciones confirmadas están guardadas.")
+        informar(
+            "Sesión interrumpida. Las operaciones confirmadas están guardadas."
+        )
         return 0
     except (OSError, ValueError) as error:
         informar(f"No se puede continuar: {error}", Fore.RED)
