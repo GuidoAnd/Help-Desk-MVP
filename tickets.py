@@ -40,7 +40,9 @@ def cambiar_estado(tickets: list[dict], identificador: int,
     if ticket is None:
         raise ValueError(f"No existe un ticket con ID {identificador}.")
     if TRANSICIONES.get(ticket["estado"]) != nuevo_estado:
-        raise ValueError("Solo se permite avanzar de abierto a en_curso y a resuelto.")
+        raise ValueError(
+            "Solo se permite avanzar de abierto a en_curso y a resuelto."
+        )
     return [
         {**actual, "estado": nuevo_estado}
         if actual["id"] == identificador else actual
@@ -49,7 +51,7 @@ def cambiar_estado(tickets: list[dict], identificador: int,
 
 
 def eliminar_ticket(tickets: list[dict], identificador: int) -> list[dict]:
-    """Devuelve la colección sin el ticket indicado, sin alterar el contador."""
+    """Devuelve la colección sin el ticket, conservando el contador externo."""
     if buscar_ticket(tickets, identificador) is None:
         raise ValueError(f"No existe un ticket con ID {identificador}.")
     return [ticket for ticket in tickets if ticket["id"] != identificador]
