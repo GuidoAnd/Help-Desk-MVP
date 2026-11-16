@@ -10,7 +10,7 @@ from tabulate import tabulate
 from archivo import BASE, cargar_datos, guardar_tickets
 from tickets import (
     PRIORIDADES, TRANSICIONES, buscar_ticket, cambiar_estado, crear_ticket,
-    eliminar_ticket,
+    eliminar_ticket, filtrar_tickets, ordenar_tickets,
 )
 
 COLORES_ESTADO = {
@@ -85,7 +85,7 @@ def mostrar_tickets(tickets: list[dict]) -> None:
         "fecha_creacion": "Fecha de creación",
     }
     filas = []
-    for ticket in tickets:
+    for ticket in ordenar_tickets(tickets):
         fila = dict(ticket)
         fila["estado"] = colorear(ticket["estado"],
                                   COLORES_ESTADO[ticket["estado"]])
@@ -94,6 +94,33 @@ def mostrar_tickets(tickets: list[dict]) -> None:
         filas, headers=list(encabezados.values()), tablefmt="grid",
         disable_numparse=True, maxcolwidths=[None, 30, 40, None, None, None],
     ))
+
+
+def consultar_filtrados(tickets: list[dict]) -> None:
+    """Solicita un filtro y presenta coincidencias ordenadas por prioridad."""
+    if not tickets:
+        informar("No hay tickets registrados.")
+        return
+    campo = questionary.select(
+        "Filtrar por:", choices=["prioridad", "estado", "Cancelar"],
+    ).ask()
+    if campo is None or campo == "Cancelar":
+        informar("Filtro cancelado.")
+        return
+    opciones = (list(PRIORIDADES) if campo == "prioridad"
+                else ["abierto", "en_curso", "resuelto"])
+    valor = questionary.select(
+        f"Elegí {campo}:", choices=opciones + ["Cancelar"],
+    ).ask()
+    if valor is None or valor == "Cancelar":
+        informar("Filtro cancelado.")
+        return
+    resultado = filtrar_tickets(tickets, campo, valor)
+    if not resultado:
+        informar(f"No hay tickets con {campo} {valor}.")
+        return
+    informar(f"Tickets con {campo} {valor}:")
+    mostrar_tickets(resultado)
 
 
 def seleccionar_ticket(tickets: list[dict]) -> dict | None:
@@ -200,7 +227,8 @@ def main() -> int:
         tickets, ultimo_id = cargar_datos()
         while True:
             opcion = questionary.select("Mesa de ayuda", choices=[
-                "Crear ticket", "Listar tickets", "Buscar ticket por ID",
+                "Crear ticket", "Listar tickets", "Filtrar tickets",
+                "Buscar ticket por ID",
                 "Cambiar estado", "Eliminar ticket", "Salir",
             ]).ask()
             if opcion is None:
@@ -217,6 +245,8 @@ def main() -> int:
                 tickets, ultimo_id = registrar_ticket(tickets, ultimo_id)
             elif opcion == "Listar tickets":
                 mostrar_tickets(tickets)
+            elif opcion == "Filtrar tickets":
+                consultar_filtrados(tickets)
             elif opcion == "Buscar ticket por ID":
                 ticket = seleccionar_ticket(tickets)
                 if ticket is not None:

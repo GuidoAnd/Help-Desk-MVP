@@ -55,3 +55,20 @@ def eliminar_ticket(tickets: list[dict], identificador: int) -> list[dict]:
     if buscar_ticket(tickets, identificador) is None:
         raise ValueError(f"No existe un ticket con ID {identificador}.")
     return [ticket for ticket in tickets if ticket["id"] != identificador]
+
+
+def filtrar_tickets(tickets: list[dict], campo: str, valor: str) -> list[dict]:
+    """Selecciona por prioridad o estado sin alterar la colección original."""
+    opciones = {
+        "prioridad": PRIORIDADES,
+        "estado": ("abierto", "en_curso", "resuelto"),
+    }
+    if campo not in opciones or valor not in opciones[campo]:
+        raise ValueError("Filtro de prioridad o estado inválido.")
+    return [ticket for ticket in tickets if ticket[campo] == valor]
+
+
+def ordenar_tickets(tickets: list[dict]) -> list[dict]:
+    """Ordena alta, media y baja, conservando el orden de cada grupo."""
+    orden = {prioridad: indice for indice, prioridad in enumerate(PRIORIDADES)}
+    return sorted(tickets, key=lambda ticket: orden[ticket["prioridad"]])
