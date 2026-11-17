@@ -10,8 +10,10 @@ from tabulate import tabulate
 from archivo import BASE, cargar_datos, guardar_tickets
 from tickets import (
     PRIORIDADES, TRANSICIONES, buscar_ticket, cambiar_estado, crear_ticket,
-    eliminar_ticket, filtrar_tickets, ordenar_tickets,
+    editar_ticket, eliminar_ticket, filtrar_tickets, ordenar_tickets,
 )
+
+VERSION = "0.2"
 
 COLORES_ESTADO = {
     "abierto": Fore.YELLOW,
@@ -123,11 +125,20 @@ def consultar_filtrados(tickets: list[dict]) -> None:
     mostrar_tickets(resultado)
 
 
-def seleccionar_ticket(tickets: list[dict]) -> dict | None:
+def seleccionar_ticket(
+    tickets: list[dict], ayuda_visual: bool = False,
+) -> dict | None:
     """Solicita un ID y resuelve la búsqueda sin cambiar los datos."""
     if not tickets:
         informar("No hay tickets registrados.")
         return None
+    if ayuda_visual:
+        filas = [[ticket["id"], ticket["titulo"]]
+                 for ticket in ordenar_tickets(tickets)]
+        print(tabulate(
+            filas, headers=["ID", "Título"], tablefmt="grid",
+            disable_numparse=True, maxcolwidths=[None, 50],
+        ))
     entrada = questionary.text("ID del ticket:").ask()
     if entrada is None:
         informar("Operación cancelada.")
@@ -179,14 +190,14 @@ def registrar_ticket(
 
 def actualizar_estado(tickets: list[dict], ultimo_id: int) -> list[dict]:
     """Ofrece el avance permitido y lo guarda antes de registrar la acción."""
-    ticket = seleccionar_ticket(tickets)
+    ticket = seleccionar_ticket(tickets, ayuda_visual=True)
     if ticket is None:
         return tickets
+    mostrar_tickets([ticket])
     siguiente = TRANSICIONES.get(ticket["estado"])
     if siguiente is None:
         informar("El ticket ya está resuelto; no hay otro estado permitido.")
         return tickets
-    mostrar_tickets([ticket])
     estado = questionary.select(
         "Nuevo estado:", choices=[siguiente, "Cancelar"],
     ).ask()
@@ -202,7 +213,7 @@ def actualizar_estado(tickets: list[dict], ultimo_id: int) -> list[dict]:
 
 def confirmar_eliminacion(tickets: list[dict], ultimo_id: int) -> list[dict]:
     """Confirma la eliminación y conserva el contador histórico."""
-    ticket = seleccionar_ticket(tickets)
+    ticket = seleccionar_ticket(tickets, ayuda_visual=True)
     if ticket is None:
         return tickets
     mostrar_tickets([ticket])
@@ -219,9 +230,65 @@ def confirmar_eliminacion(tickets: list[dict], ultimo_id: int) -> list[dict]:
     return nuevos
 
 
+def editar_datos_ticket(tickets: list[dict], ultimo_id: int) -> list[dict]:
+    """Solicita una edición y la guarda conservando ID, estado y fecha."""
+    ticket = seleccionar_ticket(tickets, ayuda_visual=True)
+    if ticket is None:
+        return tickets
+    mostrar_tickets([ticket])
+    campos = {"Título": "titulo", "Descripción": "descripcion",
+              "Prioridad": "prioridad"}
+    opcion = questionary.select(
+        "Campo a editar:", choices=list(campos) + ["Cancelar"],
+    ).ask()
+    if opcion is None or opcion == "Cancelar":
+        informar("Edición cancelada.")
+        return tickets
+    campo = campos[opcion]
+    if campo == "prioridad":
+        valor = questionary.select(
+            "Nueva prioridad:", choices=list(PRIORIDADES),
+            default=ticket[campo],
+        ).ask()
+    else:
+        opciones = {"default": ticket[campo]}
+        if campo == "titulo":
+            opciones["validate"] = (
+                lambda texto: bool(texto.strip())
+                or "El título no puede estar vacío."
+            )
+        valor = questionary.text(f"{opcion}:", **opciones).ask()
+    if valor is None:
+        informar("Edición cancelada.")
+        return tickets
+    nuevos = editar_ticket(tickets, ticket["id"], campo, valor)
+    if nuevos == tickets:
+        informar("El valor no cambió; no se guardaron modificaciones.")
+        return tickets
+    guardar_tickets(nuevos, ultimo_id)
+    registrar_accion("Ticket #%s editado (campo %s)", ticket["id"], campo)
+    informar(f"Ticket #{ticket['id']} actualizado ({opcion}).", Fore.GREEN)
+    return nuevos
+
+
+def modificar_ticket(tickets: list[dict], ultimo_id: int) -> list[dict]:
+    """Mantiene el submenú de edición y estados hasta volver al principal."""
+    while True:
+        opcion = questionary.select("Modificar ticket", choices=[
+            "Editar ticket", "Cambiar estado", "Volver al menú principal",
+        ]).ask()
+        if opcion is None or opcion == "Volver al menú principal":
+            return tickets
+        if opcion == "Editar ticket":
+            tickets = editar_datos_ticket(tickets, ultimo_id)
+        elif opcion == "Cambiar estado":
+            tickets = actualizar_estado(tickets, ultimo_id)
+
+
 def main() -> int:
     """Carga los datos y coordina las operaciones elegidas en el menú."""
     just_fix_windows_console()
+    informar(f"Mesa de ayuda — v{VERSION}")
     try:
         configurar_logs()
         tickets, ultimo_id = cargar_datos()
@@ -229,7 +296,7 @@ def main() -> int:
             opcion = questionary.select("Mesa de ayuda", choices=[
                 "Crear ticket", "Listar tickets", "Filtrar tickets",
                 "Buscar ticket por ID",
-                "Cambiar estado", "Eliminar ticket", "Salir",
+                "Modificar ticket", "Eliminar ticket", "Salir",
             ]).ask()
             if opcion is None:
                 informar(
@@ -251,8 +318,8 @@ def main() -> int:
                 ticket = seleccionar_ticket(tickets)
                 if ticket is not None:
                     mostrar_tickets([ticket])
-            elif opcion == "Cambiar estado":
-                tickets = actualizar_estado(tickets, ultimo_id)
+            elif opcion == "Modificar ticket":
+                tickets = modificar_ticket(tickets, ultimo_id)
             elif opcion == "Eliminar ticket":
                 tickets = confirmar_eliminacion(tickets, ultimo_id)
     except (EOFError, KeyboardInterrupt):
