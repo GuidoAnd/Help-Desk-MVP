@@ -1,10 +1,15 @@
 """Gestiona la persistencia local y el historial de IDs."""
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    BASE = Path(sys.executable).resolve().parent
+    if BASE.name.lower() == "bin":
+        BASE = BASE.parent
 DATOS = BASE / "tickets.json"
 CONTADOR = BASE / "ultimo_id.json"
 

@@ -72,3 +72,27 @@ def ordenar_tickets(tickets: list[dict]) -> list[dict]:
     """Ordena alta, media y baja, conservando el orden de cada grupo."""
     orden = {prioridad: indice for indice, prioridad in enumerate(PRIORIDADES)}
     return sorted(tickets, key=lambda ticket: orden[ticket["prioridad"]])
+
+
+def editar_ticket(
+    tickets: list[dict], identificador: int, campo: str, valor: str,
+) -> list[dict]:
+    """Devuelve la colección con un campo editado sin alterar el original."""
+    if campo not in ("titulo", "descripcion", "prioridad"):
+        raise ValueError(
+            "Solo se permite editar título, descripción o prioridad."
+        )
+    ticket = buscar_ticket(tickets, identificador)
+    if ticket is None:
+        raise ValueError(f"No existe un ticket con ID {identificador}.")
+    valor = valor.strip()
+    if campo == "titulo" and not valor:
+        raise ValueError("El título no puede estar vacío.")
+    if campo == "prioridad":
+        valor = valor.lower()
+        if valor not in PRIORIDADES:
+            raise ValueError("La prioridad debe ser alta, media o baja.")
+    return [
+        {**actual, campo: valor} if actual["id"] == identificador else actual
+        for actual in tickets
+    ]
