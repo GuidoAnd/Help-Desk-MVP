@@ -105,5 +105,5 @@ Mejoras implementadas en v0.2:
 - Mostrar ID y título antes de eliminar, editar o cambiar de estado.
 - Agrupar edición y cambio de estado en «Modificar ticket», con regreso al menú.
 - Editar título, descripción o prioridad sin cambiar los datos históricos.
-- Ejecutables portables para Linux y Windows
+- Ejecutables para Linux y Windows
 - Mostrar la versión de la aplicación al iniciar.
