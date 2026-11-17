@@ -18,6 +18,11 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 python3 main.py
 ```
+**Alternativa**: interactue directamente con el ejecutable `bin/Mesa`
+```sh
+cd bin
+./Mesa
+```
 
 ### Windows
 
@@ -27,6 +32,7 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 python main.py
 ```
+**Alternativa**: abra directamente el ejecutable `bin/Mesa_Win.exe`
 
 ## Uso, datos y manejo de errores
 
